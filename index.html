@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>地图标记与测距</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f5f5; }
+    .header {
+      background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
+      color: #fff;
+      padding: 12px 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .header h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    .layout { display: flex; min-height: calc(100vh - 48px); }
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      padding: 16px;
+      background: #fff;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.08);
+      overflow-y: auto;
+    }
+    .sidebar h2 { margin: 0 0 12px 0; font-size: 1rem; color: #333; }
+    .sidebar .field { margin-bottom: 12px; }
+    .sidebar .field label { display: block; font-size: 0.85rem; color: #666; margin-bottom: 4px; }
+    .sidebar input[type="number"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .sidebar .btn {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .sidebar .btn-primary { background: #c62828; color: #fff; }
+    .sidebar .btn-primary:hover { background: #b71c1c; }
+    .sidebar .btn-secondary { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
+    .sidebar .btn-secondary:hover { background: #eee; }
+    .sidebar .distance-result {
+      margin-top: 12px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: #2e7d32;
+      display: none;
+    }
+    .sidebar .distance-result.show { display: block; }
+    .sidebar .distance-result .value { font-weight: 600; font-size: 1.1rem; }
+    .filter-bar {
+      position: absolute;
+      top: 52px;
+      left: 280px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(255,255,255,0.98);
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      font-size: 0.85rem;
+    }
+    .filter-bar label { color: #666; margin-right: 4px; }
+    .filter-bar select {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      min-width: 90px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .search-bar {
+      position: absolute;
+      top: 52px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 50%;
+      max-width: 400px;
+      background: #fff;
+      padding: 8px 12px;
+      border-radius: 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    }
+    .search-bar input { flex: 1; border: none; outline: none; font-size: 0.95rem; padding: 6px 0; }
+    .search-bar input::placeholder { color: #999; }
+    .search-bar button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 16px;
+      background: #c62828;
+      color: #fff;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .search-bar button:hover { background: #b71c1c; }
+    .search-results {
+      position: absolute;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      width: 50%;
+      max-width: 400px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      display: none;
+    }
+    .search-results.show { display: block; }
+    .search-results .item {
+      padding: 10px 14px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .search-results .item:hover { background: #f5f5f5; }
+    .search-results .item-name { font-weight: 500; color: #333; }
+    .search-results .item-addr { font-size: 0.78rem; color: #666; margin-top: 2px; }
+    .search-results .item-btn {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #c62828;
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .search-results .item-btn:hover { background: #b71c1c; }
+    .main { flex: 1; position: relative; min-width: 0; }
+    #container {
+      width: 100%;
+      height: calc(100vh - 48px);
+      min-height: 400px;
+    }
+    #container .amap-marker-label {
+      border: 1px solid #ccc !important;
+      background: rgba(255,255,255,0.95) !important;
+      padding: 4px 8px !important;
+      border-radius: 4px !important;
+      font-size: 12px !important;
+      white-space: nowrap !important;
+      max-width: 200px !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .info-bar {
+      position: absolute;
+      bottom: 12px;
+      left: 280px;
+      z-index: 10;
+      padding: 8px 14px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      font-size: 0.82rem;
+      color: #333;
+    }
+    .info-bar .count { color: #c62828; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="header">地图标记与测距 · 广东省广州市增城区</div>
+  <div class="layout">
+    <div class="sidebar">
+      <h2>测距</h2>
+      <div class="field">
+        <label>标点序号 1</label>
+        <input type="number" id="distNum1" min="1" max="10" placeholder="1-10" />
+      </div>
+      <div class="field">
+        <label>标点序号 2</label>
+        <input type="number" id="distNum2" min="1" max="10" placeholder="1-10" />
+      </div>
+      <button type="button" class="btn btn-primary" id="btnCalcDist">计算距离</button>
+      <div class="distance-result" id="distanceResult">
+        <span class="label">直线距离：</span><span class="value" id="distanceValue">—</span>
+      </div>
+      <button type="button" class="btn btn-secondary" id="btnClearLine" style="margin-top:10px;">清除连线</button>
+
+      <h2 style="margin-top:20px;">标点</h2>
+      <p style="font-size:0.8rem;color:#666;margin:0 0 8px 0;">点击地图上的标点可删除该点</p>
+      <button type="button" class="btn btn-secondary" id="btnClearAll">清除全部标点</button>
+    </div>
+    <div class="main">
+      <div class="filter-bar">
+        <label>省</label>
+        <select id="filterProvince">
+          <option value="">全国</option>
+          <option value="广东" selected>广东省</option>
+        </select>
+        <label>市</label>
+        <select id="filterCity">
+          <option value="">全部</option>
+          <option value="广州" selected>广州市</option>
+        </select>
+        <label>区</label>
+        <select id="filterDistrict">
+          <option value="">全部</option>
+          <option value="440118" selected>增城区</option>
+        </select>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="搜索地址..." />
+        <button type="button" id="searchBtn">搜索</button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+      <div class="info-bar">已标记 <span class="count" id="markCount">0</span> / 10 个地点</div>
+      <div id="container"></div>
+    </div>
+  </div>
+
+  <script>
+    window._AMapSecurityConfig = { securityJsCode: '2777e7de09d2229b6c751642ccd68d55' };
+    var AMAP_KEY = '11b4e6d0f58c348f768650c222899b34';
+    var map = null;
+    var placeSearch = null;
+    var geocoder = null;
+    var markers = [];
+    var maxMarkers = 10;
+    var distanceLine = null;
+    var distanceLabel = null;
+    var defaultClinics = ['润心诊所', '林运秋诊所', '康宁诊所', '医甲诊所', '余淦湖诊所', '莫柱雄诊所', '林仲明诊所'];
+
+    var redIconUrl = 'data:image/svg+xml,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="28" height="42">' +
+      '<path fill="#c62828" stroke="#fff" stroke-width="2" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z"/>' +
+      '<circle cx="12" cy="12" r="5" fill="#fff"/>' +
+      '</svg>'
+    );
+
+    function loadScript() {
+      return new Promise(function (resolve, reject) {
+        if (window.AMap) { resolve(); return; }
+        var s = document.createElement('script');
+        s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY + '&plugin=AMap.PlaceSearch,AMap.Geocoder,AMap.GeometryUtil';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    function initMap() {
+      map = new AMap.Map('container', {
+        zoom: 12,
+        center: [113.81, 23.26],
+        viewMode: '2D'
+      });
+      return new Promise(function (resolve) {
+        AMap.plugin(['AMap.PlaceSearch', 'AMap.Geocoder', 'AMap.GeometryUtil'], function () {
+          placeSearch = new AMap.PlaceSearch({
+            pageSize: 5,
+            pageIndex: 1,
+            city: '440118',
+            citylimit: true
+          });
+          geocoder = new AMap.Geocoder({ city: '广州' });
+          resolve();
+        });
+      });
+    }
+
+    function getMarkerNumber(idx) { return idx + 1; }
+
+    function updateAllMarkerLabels() {
+      markers.forEach(function (m, idx) {
+        var num = getMarkerNumber(idx);
+        var name = (m.extData && m.extData.name) || '标记点';
+        m.setLabel({
+          content: num + '. ' + name,
+          direction: 'bottom',
+          offset: new AMap.Pixel(0, 4)
+        });
+      });
+    }
+
+    function updateMarkCount() {
+      document.getElementById('markCount').textContent = markers.length;
+    }
+
+    function removeDistanceLine() {
+      if (distanceLine) { map.remove(distanceLine); distanceLine = null; }
+      if (distanceLabel) { map.remove(distanceLabel); distanceLabel = null; }
+      document.getElementById('distanceResult').classList.remove('show');
+    }
+
+    function addMarker(lnglat, name, address) {
+      if (markers.length >= maxMarkers) return false;
+      var num = getMarkerNumber(markers.length);
+      var marker = new AMap.Marker({
+        position: lnglat,
+        title: num + '. ' + (name || '标记点'),
+        icon: redIconUrl,
+        offset: new AMap.Pixel(-14, -42),
+        label: {
+          content: num + '. ' + (name || '标记点'),
+          direction: 'bottom',
+          offset: new AMap.Pixel(0, 4)
+        }
+      });
+      marker.extData = { name: name || '', address: address || '' };
+      marker.on('click', onMarkerClickDelete);
+      map.add(marker);
+      markers.push(marker);
+      updateMarkCount();
+      return true;
+    }
+
+    function onMarkerClickDelete(e) {
+      var marker = e.target;
+      var idx = markers.indexOf(marker);
+      if (idx === -1) return;
+      map.remove(marker);
+      markers.splice(idx, 1);
+      updateAllMarkerLabels();
+      updateMarkCount();
+      removeDistanceLine();
+    }
+
+    function calcDistance() {
+      var n1 = parseInt(document.getElementById('distNum1').value, 10);
+      var n2 = parseInt(document.getElementById('distNum2').value, 10);
+      if (isNaN(n1) || isNaN(n2) || n1 < 1 || n2 < 1 || n1 > 10 || n2 > 10) {
+        alert('请输入 1～10 之间的标点序号');
+        return;
+      }
+      var i1 = n1 - 1, i2 = n2 - 1;
+      if (i1 >= markers.length || i2 >= markers.length) {
+        alert('当前标点数量不足，请确认序号');
+        return;
+      }
+      if (i1 === i2) {
+        alert('请选择两个不同的标点');
+        return;
+      }
+      removeDistanceLine();
+      var p1 = markers[i1].getPosition();
+      var p2 = markers[i2].getPosition();
+      var toArr = function (p) {
+        if (Array.isArray(p)) return p;
+        if (p && p.getLng) return [p.getLng(), p.getLat()];
+        return [p.lng, p.lat];
+      };
+      var path = [toArr(p1), toArr(p2)];
+      var distM = AMap.GeometryUtil.distance(path[0], path[1]);
+      var distText = distM >= 1000 ? (distM / 1000).toFixed(2) + ' 公里' : Math.round(distM) + ' 米';
+
+      distanceLine = new AMap.Polyline({
+        path: path,
+        strokeColor: '#c62828',
+        strokeWeight: 4,
+        strokeOpacity: 0.9
+      });
+      map.add(distanceLine);
+
+      var midLng = (path[0][0] + path[1][0]) / 2;
+      var midLat = (path[0][1] + path[1][1]) / 2;
+      var labelDiv = document.createElement('div');
+      labelDiv.style.cssText = 'background:rgba(198,40,40,0.95);color:#fff;padding:6px 10px;border-radius:6px;font-size:13px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2);';
+      labelDiv.textContent = distText;
+      distanceLabel = new AMap.Marker({
+        position: [midLng, midLat],
+        content: labelDiv,
+        offset: new AMap.Pixel(-50, -15)
+      });
+      map.add(distanceLabel);
+
+      document.getElementById('distanceValue').textContent = distText;
+      document.getElementById('distanceResult').classList.add('show');
+    }
+
+    function doSearch() {
+      var keyword = document.getElementById('searchInput').value.trim();
+      if (!keyword) return;
+      if (!placeSearch) { alert('搜索服务加载中，请稍候再试'); return; }
+      var city = document.getElementById('filterDistrict').value ||
+                 document.getElementById('filterCity').value ||
+                 document.getElementById('filterProvince').value || '';
+      placeSearch.setCity(city || '全国');
+      placeSearch.setCityLimit(!!city);
+      var panel = document.getElementById('searchResults');
+      panel.innerHTML = '<div style="padding:16px;text-align:center;color:#666;">搜索中...</div>';
+      panel.classList.add('show');
+      placeSearch.search(keyword, function (status, result) {
+        panel.innerHTML = '';
+        if (status !== 'complete' || !result.poiList || !result.poiList.pois || result.poiList.pois.length === 0) {
+          panel.innerHTML = '<div style="padding:16px;text-align:center;color:#666;">未找到相关地点</div>';
+          return;
+        }
+        var pois = result.poiList.pois;
+        pois.forEach(function (poi) {
+          var loc = poi.location;
+          var lnglat = Array.isArray(loc) ? loc : (loc ? [loc.lng, loc.lat] : null);
+          if (!lnglat) return;
+          var item = document.createElement('div');
+          item.className = 'item';
+          item.innerHTML =
+            '<div><div class="item-name">' + (poi.name || '') + '</div><div class="item-addr">' + (poi.address || '') + '</div></div>' +
+            '<button type="button" class="item-btn" data-name="' + (poi.name || '').replace(/"/g, '&quot;') + '" data-addr="' + (poi.address || '').replace(/"/g, '&quot;') + '" data-lng="' + lnglat[0] + '" data-lat="' + lnglat[1] + '">确认标记</button>';
+          item.querySelector('.item-btn').addEventListener('click', function () {
+            if (markers.length >= maxMarkers) { alert('最多只能标记 10 个地点'); return; }
+            addMarker(
+              [parseFloat(this.getAttribute('data-lng')), parseFloat(this.getAttribute('data-lat'))],
+              this.getAttribute('data-name'),
+              this.getAttribute('data-addr')
+            );
+            panel.classList.remove('show');
+            document.getElementById('searchInput').value = '';
+          });
+          panel.appendChild(item);
+        });
+      });
+    }
+
+    function searchOneAndMark(keyword, callback) {
+      if (!keyword || !keyword.trim()) { callback(null); return; }
+      var k = keyword.trim();
+      placeSearch.search(k, function (status, result) {
+        if (status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length > 0) {
+          var poi = result.poiList.pois[0];
+          var loc = poi.location;
+          var lnglat = Array.isArray(loc) ? loc : [loc.lng, loc.lat];
+          callback({ lnglat: lnglat, name: poi.name, address: poi.address });
+          return;
+        }
+        if (geocoder) {
+          geocoder.getLocation('广州市增城区' + k, function (st, res) {
+            if (st === 'complete' && res.info === 'OK' && res.geocodes && res.geocodes.length > 0) {
+              var geo = res.geocodes[0];
+              var loc = geo.location;
+              var lnglat = Array.isArray(loc) ? loc : (loc.getLng ? [loc.getLng(), loc.getLat()] : [loc.lng, loc.lat]);
+              callback({ lnglat: lnglat, name: k, address: geo.formattedAddress });
+            } else callback(null);
+          });
+        } else callback(null);
+      });
+    }
+
+    function loadDefaultClinics() {
+      if (!placeSearch || markers.length >= maxMarkers) return;
+      var list = defaultClinics.slice();
+      function next() {
+        if (list.length === 0) {
+          if (markers.length > 0) map.setFitView(markers, 50);
+          return;
+        }
+        var name = list.shift();
+        searchOneAndMark(name, function (r) {
+          if (r && markers.length < maxMarkers) addMarker(r.lnglat, r.name, r.address);
+          setTimeout(next, 220);
+        });
+      }
+      next();
+    }
+
+    document.getElementById('btnCalcDist').addEventListener('click', calcDistance);
+    document.getElementById('btnClearLine').addEventListener('click', removeDistanceLine);
+    document.getElementById('btnClearAll').addEventListener('click', function () {
+      markers.forEach(function (m) { map.remove(m); });
+      markers = [];
+      removeDistanceLine();
+      updateMarkCount();
+    });
+    document.getElementById('searchBtn').addEventListener('click', doSearch);
+    document.getElementById('searchInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    loadScript().then(function () { return initMap(); })
+      .then(function () {
+        updateMarkCount();
+        loadDefaultClinics();
+      })
+      .catch(function () {
+        document.querySelector('.info-bar').innerHTML = '地图加载失败，请检查 Key 或网络';
+      });
+  </script>
+</body>
+</html>
