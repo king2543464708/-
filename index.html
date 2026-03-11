@@ -217,17 +217,14 @@
           <label>省</label>
           <select id="filterProvince">
             <option value="">全国</option>
-            <option value="广东" selected>广东省</option>
           </select>
           <label>市</label>
           <select id="filterCity">
             <option value="">全部</option>
-            <option value="广州" selected>广州市</option>
           </select>
           <label>区</label>
           <select id="filterDistrict">
             <option value="">全部</option>
-            <option value="440118" selected>增城区</option>
           </select>
         </div>
         <div class="search-bar">
@@ -247,6 +244,7 @@
     var map = null;
     var placeSearch = null;
     var geocoder = null;
+    var districtSearch = null;
     var markers = [];
     var maxMarkers = 10;
     var distanceLine = null;
@@ -264,7 +262,7 @@
       return new Promise(function (resolve, reject) {
         if (window.AMap) { resolve(); return; }
         var s = document.createElement('script');
-        s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY + '&plugin=AMap.PlaceSearch,AMap.Geocoder,AMap.GeometryUtil';
+        s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY + '&plugin=AMap.PlaceSearch,AMap.Geocoder,AMap.GeometryUtil,AMap.DistrictSearch';
         s.onload = resolve;
         s.onerror = reject;
         document.head.appendChild(s);
@@ -278,7 +276,7 @@
         viewMode: '2D'
       });
       return new Promise(function (resolve) {
-        AMap.plugin(['AMap.PlaceSearch', 'AMap.Geocoder', 'AMap.GeometryUtil'], function () {
+        AMap.plugin(['AMap.PlaceSearch', 'AMap.Geocoder', 'AMap.GeometryUtil', 'AMap.DistrictSearch'], function () {
           placeSearch = new AMap.PlaceSearch({
             pageSize: 5,
             pageIndex: 1,
@@ -286,8 +284,80 @@
             citylimit: true
           });
           geocoder = new AMap.Geocoder({ city: '广州' });
+          districtSearch = new AMap.DistrictSearch({
+            subdistrict: 1,
+            extensions: 'base'
+          });
           resolve();
         });
+      });
+    }
+
+    function fillSelect(selId, list, allText) {
+      var sel = document.getElementById(selId);
+      sel.innerHTML = '';
+      var opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = allText || '全部';
+      sel.appendChild(opt0);
+      if (!list || !list.length) return;
+      list.forEach(function (d) {
+        var name = d.name || d.districtName;
+        var adcode = (d.adcode !== undefined && d.adcode !== null) ? String(d.adcode) : (d.districtAdcode || '');
+        if (!name) return;
+        var opt = document.createElement('option');
+        opt.value = adcode;
+        opt.textContent = name;
+        opt.setAttribute('data-name', name);
+        sel.appendChild(opt);
+      });
+    }
+
+    function loadProvinces(cb) {
+      if (!districtSearch) { if (cb) cb(); return; }
+      districtSearch.search('中国', function (status, result) {
+        if (status !== 'complete' || !result.districtList || !result.districtList.length) {
+          if (cb) cb();
+          return;
+        }
+        var root = result.districtList[0];
+        var list = (root.districtList || root.districts || root.subDistricts || []).slice();
+        fillSelect('filterProvince', list, '全国');
+        if (cb) cb();
+      });
+    }
+
+    function loadCities(provinceAdcode, cb) {
+      var sel = document.getElementById('filterCity');
+      sel.innerHTML = '<option value="">全部</option>';
+      var dis = document.getElementById('filterDistrict');
+      dis.innerHTML = '<option value="">全部</option>';
+      if (!provinceAdcode || !districtSearch) { if (cb) cb(); return; }
+      districtSearch.search(provinceAdcode, function (status, result) {
+        if (status !== 'complete' || !result.districtList || !result.districtList.length) {
+          if (cb) cb();
+          return;
+        }
+        var root = result.districtList[0];
+        var list = (root.districtList || root.districts || root.subDistricts || []).slice();
+        fillSelect('filterCity', list, '全部');
+        if (cb) cb();
+      });
+    }
+
+    function loadDistricts(cityAdcode, cb) {
+      var dis = document.getElementById('filterDistrict');
+      dis.innerHTML = '<option value="">全部</option>';
+      if (!cityAdcode || !districtSearch) { if (cb) cb(); return; }
+      districtSearch.search(cityAdcode, function (status, result) {
+        if (status !== 'complete' || !result.districtList || !result.districtList.length) {
+          if (cb) cb();
+          return;
+        }
+        var root = result.districtList[0];
+        var list = (root.districtList || root.districts || root.subDistricts || []).slice();
+        fillSelect('filterDistrict', list, '全部');
+        if (cb) cb();
       });
     }
 
@@ -497,9 +567,50 @@
       if (e.key === 'Enter') doSearch();
     });
 
+    document.getElementById('filterProvince').addEventListener('change', function () {
+      var adcode = this.value;
+      loadCities(adcode, function () {
+        document.getElementById('filterDistrict').innerHTML = '<option value="">全部</option>';
+      });
+    });
+    document.getElementById('filterCity').addEventListener('change', function () {
+      loadDistricts(this.value);
+    });
+
     loadScript().then(function () { return initMap(); })
       .then(function () {
         updateMarkCount();
+        loadProvinces(function () {
+          var pSel = document.getElementById('filterProvince');
+          var found = false;
+          for (var i = 0; i < pSel.options.length; i++) {
+            if (pSel.options[i].value === '440000' || (pSel.options[i].getAttribute('data-name') || '').indexOf('广东') !== -1) {
+              pSel.selectedIndex = i;
+              found = true;
+              break;
+            }
+          }
+          if (found) {
+            loadCities(pSel.value, function () {
+              var cSel = document.getElementById('filterCity');
+              for (var j = 0; j < cSel.options.length; j++) {
+                if (cSel.options[j].value === '440100' || (cSel.options[j].getAttribute('data-name') || '').indexOf('广州') !== -1) {
+                  cSel.selectedIndex = j;
+                  loadDistricts(cSel.value, function () {
+                    var dSel = document.getElementById('filterDistrict');
+                    for (var k = 0; k < dSel.options.length; k++) {
+                      if (dSel.options[k].value === '440118' || (dSel.options[k].getAttribute('data-name') || '').indexOf('增城') !== -1) {
+                        dSel.selectedIndex = k;
+                        break;
+                      }
+                    }
+                  });
+                  break;
+                }
+              }
+            });
+          }
+        });
         loadDefaultClinics();
       })
       .catch(function () {
