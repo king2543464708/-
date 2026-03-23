@@ -287,7 +287,7 @@
   </style>
 </head>
 <body>
-  <div class="header">地图标记与测距 · 广东省广州市增城区</div>
+  <div class="header">地图标记与测距 · 山东省济南市</div>
   <div class="layout">
     <div class="sidebar">
       <h2>标点</h2>
@@ -347,7 +347,16 @@
     var maxMarkers = 10;
     var distanceLine = null;
     var distanceLabel = null;
-    var defaultClinics = ['润心诊所', '林运秋诊所', '康宁诊所', '医甲诊所', '余淦湖诊所', '莫柱雄诊所', '林仲明诊所'];
+    var defaultClinics = [
+      '英仁门诊部',
+      '翡翠济仁门诊部',
+      '福鑫社区卫生服务站',
+      '刘智远社区卫生服务站',
+      '康泓诊所',
+      '长弓大药房',
+      '仁康门诊部',
+      '建鑫社区卫生服务站'
+    ];
 
     var redIconUrl = 'data:image/svg+xml,' + encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="28" height="42">' +
@@ -370,7 +379,7 @@
     function initMap() {
       map = new AMap.Map('container', {
         zoom: 12,
-        center: [113.81, 23.26],
+        center: [117.12, 36.65],
         viewMode: '2D'
       });
       return new Promise(function (resolve) {
@@ -378,10 +387,10 @@
           placeSearch = new AMap.PlaceSearch({
             pageSize: 5,
             pageIndex: 1,
-            city: '440118',
+            city: '370100',
             citylimit: true
           });
-          geocoder = new AMap.Geocoder({ city: '广州' });
+          geocoder = new AMap.Geocoder({ city: '济南' });
           districtSearch = new AMap.DistrictSearch({
             subdistrict: 1,
             extensions: 'base'
@@ -457,6 +466,49 @@
         fillSelect('filterDistrict', list, '全部');
         if (cb) cb();
       });
+    }
+
+    function parseLngLatCenter(c) {
+      if (!c) return null;
+      if (Array.isArray(c) && c.length >= 2) return [Number(c[0]), Number(c[1])];
+      if (typeof c.getLng === 'function') return [c.getLng(), c.getLat()];
+      if (typeof c.lng === 'number' && typeof c.lat === 'number') return [c.lng, c.lat];
+      return null;
+    }
+
+    function zoomForLevel(level) {
+      if (level === 'province') return 7;
+      if (level === 'city') return 10;
+      if (level === 'district') return 12;
+      return 11;
+    }
+
+    function flyToNationwide() {
+      if (!map) return;
+      map.setCenter([105.3, 36.2]);
+      map.setZoom(4.5);
+    }
+
+    function flyToAdcode(adcode) {
+      if (!map || !districtSearch || !adcode) return;
+      districtSearch.search(String(adcode), function (status, result) {
+        if (status !== 'complete' || !result.districtList || !result.districtList.length) return;
+        var d = result.districtList[0];
+        var lnglat = parseLngLatCenter(d.center);
+        if (!lnglat) return;
+        map.setCenter(lnglat);
+        map.setZoom(zoomForLevel(d.level));
+      });
+    }
+
+    function flyToCurrentRegion() {
+      var d = document.getElementById('filterDistrict').value;
+      var c = document.getElementById('filterCity').value;
+      var p = document.getElementById('filterProvince').value;
+      if (d) flyToAdcode(d);
+      else if (c) flyToAdcode(c);
+      else if (p) flyToAdcode(p);
+      else flyToNationwide();
     }
 
     function getMarkerNumber(idx) { return idx + 1; }
@@ -623,7 +675,7 @@
           return;
         }
         if (geocoder) {
-          geocoder.getLocation('广州市增城区' + k, function (st, res) {
+          geocoder.getLocation('山东省济南市' + k, function (st, res) {
             if (st === 'complete' && res.info === 'OK' && res.geocodes && res.geocodes.length > 0) {
               var geo = res.geocodes[0];
               var loc = geo.location;
@@ -668,11 +720,21 @@
     document.getElementById('filterProvince').addEventListener('change', function () {
       var adcode = this.value;
       loadCities(adcode, function () {
-        document.getElementById('filterDistrict').innerHTML = '<option value="">全部</option>';
+        if (adcode) flyToAdcode(adcode);
+        else flyToNationwide();
       });
     });
     document.getElementById('filterCity').addEventListener('change', function () {
-      loadDistricts(this.value);
+      var cityAd = this.value;
+      loadDistricts(cityAd, function () {
+        var p = document.getElementById('filterProvince').value;
+        if (cityAd) flyToAdcode(cityAd);
+        else if (p) flyToAdcode(p);
+        else flyToNationwide();
+      });
+    });
+    document.getElementById('filterDistrict').addEventListener('change', function () {
+      flyToCurrentRegion();
     });
 
     loadScript().then(function () { return initMap(); })
@@ -682,7 +744,7 @@
           var pSel = document.getElementById('filterProvince');
           var found = false;
           for (var i = 0; i < pSel.options.length; i++) {
-            if (pSel.options[i].value === '440000' || (pSel.options[i].getAttribute('data-name') || '').indexOf('广东') !== -1) {
+            if (pSel.options[i].value === '370000' || (pSel.options[i].getAttribute('data-name') || '').indexOf('山东') !== -1) {
               pSel.selectedIndex = i;
               found = true;
               break;
@@ -692,16 +754,10 @@
             loadCities(pSel.value, function () {
               var cSel = document.getElementById('filterCity');
               for (var j = 0; j < cSel.options.length; j++) {
-                if (cSel.options[j].value === '440100' || (cSel.options[j].getAttribute('data-name') || '').indexOf('广州') !== -1) {
+                if (cSel.options[j].value === '370100' || (cSel.options[j].getAttribute('data-name') || '').indexOf('济南') !== -1) {
                   cSel.selectedIndex = j;
                   loadDistricts(cSel.value, function () {
-                    var dSel = document.getElementById('filterDistrict');
-                    for (var k = 0; k < dSel.options.length; k++) {
-                      if (dSel.options[k].value === '440118' || (dSel.options[k].getAttribute('data-name') || '').indexOf('增城') !== -1) {
-                        dSel.selectedIndex = k;
-                        break;
-                      }
-                    }
+                    flyToAdcode(cSel.value);
                   });
                   break;
                 }
